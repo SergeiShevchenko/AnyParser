@@ -1,0 +1,6 @@
+﻿program var
+int n,i;
+begin
+n as 1;
+i as 1.20;
+end.
