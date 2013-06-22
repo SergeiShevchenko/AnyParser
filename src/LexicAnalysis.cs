@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
-using System.Linq;
 
 namespace AnyParser
 {
@@ -17,6 +16,8 @@ namespace AnyParser
         public const int IDENTIFIERS = 2;
         public const int INTEGERS = 3;
         public const int REALS = 4;
+
+        public string ErrorMsg { get; set; }
 
         /// <summary>
         /// Таблица таблиц лексем
@@ -49,15 +50,8 @@ namespace AnyParser
         private int symNum;
 
         /// <summary>
-        /// Номер текущей строки без учета последних пробелов
+        /// Номер текущего символа в разбираемом коде
         /// </summary>
-        private int lineNumWW;
-
-        /// <summary>
-        /// Номер текущей колонки в строке без учета последних пробелов
-        /// </summary>
-        private int symNumWW;
-
         private int charNum;
 
         private List<PostProcessInstruction> postProcessList;
@@ -70,59 +64,61 @@ namespace AnyParser
         /// <param name="grammar">Настройки лексического анализа</param>
         public LexicAnalysis(string fileName, LexicalGrammar grammar)
         {
-            Tables[WORDS].AddRange(grammar.ReservedWords);
-            Tables[SEPARATORS].AddRange(grammar.Separators);
-            postProcessList = grammar.PostProcessList;
-            commentsList = grammar.CommentsList;
-            source = string.Join("\n", File.ReadAllLines(fileName));
-            charNum = 0;
-            lineNum = symNum = lineNumWW = symNumWW = 1;
+            try
+            {
+                Tables[WORDS].AddRange(grammar.ReservedWords);
+                Tables[SEPARATORS].AddRange(grammar.Separators);
+                postProcessList = grammar.PostProcessList;
+                commentsList = grammar.CommentsList;
+                source = string.Join("\n", File.ReadAllLines(fileName));
+                charNum = 0;
+                lineNum = symNum = 1;
+                PreProcess();
+                getChar();
+                while (ch != '\0')
+                    lexicalLoop();
+                PostProcess();
+            }
+            catch (Exception e)
+            {
+                ErrorMsg = e.Message;
+            }
         }
 
-        /// <summary>
-        /// Начать анализ
-        /// </summary>
-        public void Work()
+        private void lexicalLoop()
         {
-            PreProcess();
-            getChar();
-            while (ch != '\0')
-            {
-                while (char.IsWhiteSpace(ch))
-                    getChar();
-                if (char.IsLetter(ch))
-                {
-                    StringBuilder lettersAccumulator = new StringBuilder();
-                    lettersAccumulator.Append(ch);
-                    int tempSymNumWW = symNumWW;
-                    int tempLineNumWW = lineNumWW;
-                    getChar();
-                    while (char.IsLetterOrDigit(ch))
-                    {
-                        lettersAccumulator.Append(ch);
-                        tempSymNumWW = symNumWW;
-                        tempLineNumWW = lineNumWW;
-                        getChar();
-                    }
-                    string buf = lettersAccumulator.ToString();
-                    int z = Tables[WORDS].FindIndex(buf);
-                    Output.Add(z != -1 ? createLexem(WORDS, z, buf, tempLineNumWW, tempSymNumWW) : registerLexem(IDENTIFIERS, buf, buf, tempLineNumWW, tempSymNumWW));
-                    continue;
-                }
-                if (ch >= '0' && ch <= '9')
-                {
-                    parseNumber();
-                    continue;
-                }
-                if (char.IsWhiteSpace(ch) || ch == '\0')
-                    continue;
-                //TODO: что делать с многосимвольными разделителями?
-                Output.Add(findLexem(SEPARATORS, ch.ToString(), 11, lineNumWW, symNumWW));
+            while (char.IsWhiteSpace(ch))
                 getChar();
+            if (char.IsLetter(ch))
+            {
+                StringBuilder lettersAccumulator = new StringBuilder();
+                lettersAccumulator.Append(ch);
+                int prevSymNum = symNum;
+                int prevLineNum = lineNum;
+                getChar();
+                while (char.IsLetterOrDigit(ch))
+                {
+                    lettersAccumulator.Append(ch);
+                    prevSymNum = symNum;
+                    prevLineNum = lineNum;
+                    getChar();
+                }
+                string buf = lettersAccumulator.ToString();
+                int z = Tables[WORDS].FindIndex(buf);
+                Output.Add(z != -1 ? createLexem(WORDS, z, buf, prevLineNum, prevSymNum)
+                                   : registerLexem(IDENTIFIERS, buf, buf, prevLineNum, prevSymNum));
+                return;
             }
-            PostProcess();
-            for (int i = 0; i < Output.Count; i++)
-                Console.WriteLine(String.Format("{0} at {1}", Output[i].Display, Output[i].LineNumber));
+            if (ch >= '0' && ch <= '9')
+            {
+                parseNumber();
+                return;
+            }
+            if (char.IsWhiteSpace(ch) || ch == '\0')
+                return;
+            //TODO: что делать с многосимвольными разделителями?
+            Output.Add(findLexem(SEPARATORS, ch.ToString(), 11, ": " + ch, lineNum, symNum));
+            getChar();
         }
 
         /// <summary>
@@ -151,7 +147,7 @@ namespace AnyParser
                     break;
                 nd = source.IndexOf(commentsList[mini].End, minbeg+1);
                 if (nd < 0)
-                    error(12);
+                    error(12, string.Empty);
                 for (j = minbeg; j <= nd; j++)
                     if (!char.IsWhiteSpace(sb[j]))
                         sb[j] = ' ';
@@ -165,9 +161,11 @@ namespace AnyParser
         /// <param name="table">ИД таблицы</param>
         /// <param name="number">ИД в таблице</param>
         /// <param name="display">Строковое представление</param>
-        private Lexem createLexem(int table, int number, string display, int lineNum, int symNum)
+        /// <param name="endLineNum">Номер строки (где кончилась лексема)</param>
+        /// <param name="endColNum">Номер колонки (где кончилась лексема)</param>
+        private Lexem createLexem(int table, int number, string display, int endLineNum, int endColNum)
         {
-            return new Lexem(table, number, display, lineNum, symNum-display.Length, symNum-1);
+            return new Lexem(table, number, display, endLineNum, endColNum-display.Length, endColNum-1);
         }
 
         /// <summary>
@@ -176,12 +174,14 @@ namespace AnyParser
         /// <param name="tableId">ИД таблицы</param>
         /// <param name="toFind">Искомый объект</param>
         /// <param name="errorCode">Код генерируемой ошибки, если не найдено</param>
-        private Lexem findLexem(int tableId, string toFind, int errorCode, int lineNum, int symNum)
+        /// <param name="endLineNum">Номер строки (где кончилась лексема)</param>
+        /// <param name="endColNum">Номер колонки (где кончилась лексема)</param>
+        private Lexem findLexem(int tableId, string toFind, int errorCode, string errorDesc, int endLineNum, int endColNum)
         {
             int index = Tables[tableId].FindIndex(toFind);
             if (index < 0)
-                error(errorCode);
-            return createLexem(tableId, index, toFind, lineNum, symNum);
+                error(errorCode, errorDesc);
+            return createLexem(tableId, index, toFind, endLineNum, endColNum);
         }
 
         /// <summary>
@@ -189,9 +189,12 @@ namespace AnyParser
         /// </summary>
         /// <param name="tableId">ИД таблицы</param>
         /// <param name="objectToAdd">Добавляемый объект</param>
-        private Lexem registerLexem(int tableId, object objectToAdd, string buf, int lineNum, int symNum)
+        /// <param name="buf">Строковое представление лексемы</param>
+        /// <param name="endLineNum">Номер строки (где кончилась лексема)</param>
+        /// <param name="endColNum">Номер колонки (где кончилась лексема)</param>
+        private Lexem registerLexem(int tableId, object objectToAdd, string buf, int endLineNum, int endColNum)
         {
-            return createLexem(tableId, Tables[tableId].SafeAdd(objectToAdd), buf, lineNum, symNum);
+            return createLexem(tableId, Tables[tableId].SafeAdd(objectToAdd), buf, endLineNum, endColNum);
         }
 
         /// <summary>
@@ -213,11 +216,6 @@ namespace AnyParser
             ch = source[charNum];
             charNum++;
             symNum++;
-            if (!char.IsWhiteSpace(ch) && ch != '\n')
-            {
-                lineNumWW = lineNum;
-                symNumWW = symNum;
-            }
         }
 
         /// <summary>
@@ -226,12 +224,12 @@ namespace AnyParser
         private void parseNumber()
         {
             StringBuilder digitsAccumulator = new StringBuilder();
-            int tempSymNumWW = 0, tempLineNumWW = 0;
+            int prevSymNum = 0, prevLineNum = 0;
             while (char.IsDigit(ch))
             {
                 digitsAccumulator.Append(ch);
-                tempLineNumWW = lineNumWW;
-                tempSymNumWW = symNumWW;
+                prevLineNum = lineNum;
+                prevSymNum = symNum;
                 getChar();
             }
             if (ch == '.' || ch == 'E' || ch == 'e')
@@ -242,11 +240,11 @@ namespace AnyParser
             }
             long n;
             if (!long.TryParse(digitsAccumulator.ToString(), out n))
-                error(10);
-            Output.Add(registerLexem(INTEGERS, n, digitsAccumulator.ToString(), tempLineNumWW, tempSymNumWW));
+                error(10, ": " + digitsAccumulator);
+            Output.Add(registerLexem(INTEGERS, n, digitsAccumulator.ToString(), prevLineNum, prevSymNum));
             //TODO: что делать с многосимвольными разделителями?
             if (Tables[SEPARATORS].FindIndex(ch.ToString()) < 0 && ch != ' ')
-                error(12);
+                error(11, ": " + ch);
         }
 
         /// <summary>
@@ -255,7 +253,7 @@ namespace AnyParser
         /// <param name="digitsAccumulator">Уже накопленные символы числа</param>
         private void parseRealNumber(StringBuilder digitsAccumulator)
         {
-            int tempSymNumWW = lineNumWW, tempLineNumWW = symNumWW;
+            int prevSymNum = lineNum, prevLineNum = symNum;
             double d;
             if (ch == '.')
             {
@@ -263,45 +261,45 @@ namespace AnyParser
                 while (char.IsDigit(ch))
                 {
                     digitsAccumulator.Append(ch);
-                    tempLineNumWW = lineNumWW;
-                    tempSymNumWW = symNumWW;
+                    prevLineNum = lineNum;
+                    prevSymNum = symNum;
                     getChar();
                 }
             }
             if (ch != 'E' && ch != 'e')
             {
                 if (!double.TryParse(digitsAccumulator.ToString(), System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out d))
-                    error(10);
-                Output.Add(registerLexem(REALS, d, digitsAccumulator.ToString(), tempLineNumWW, tempSymNumWW));
+                    error(10, ": " + digitsAccumulator);
+                Output.Add(registerLexem(REALS, d, digitsAccumulator.ToString(), prevLineNum, prevSymNum));
                 //TODO: что делать с многосимвольными разделителями?
                 if (Tables[SEPARATORS].FindIndex(ch.ToString()) < 0 && ch != ' ')
-                    error(12);
+                    error(11, ": " + ch);
                 return;
             }
             digitsAccumulator.Append(ch);
-            tempLineNumWW = lineNumWW;
-            tempSymNumWW = symNumWW;
+            prevLineNum = lineNum;
+            prevSymNum = symNum;
             getChar();
             if (ch == '+' || ch == '-')
             {
                 digitsAccumulator.Append(ch);
-                tempLineNumWW = lineNumWW;
-                tempSymNumWW = symNumWW;
+                prevLineNum = lineNum;
+                prevSymNum = symNum;
                 getChar();
             }
             while (char.IsDigit(ch))
             {
                 digitsAccumulator.Append(ch);
-                tempLineNumWW = lineNumWW;
-                tempSymNumWW = symNumWW;
+                prevLineNum = lineNum;
+                prevSymNum = symNum;
                 getChar();
             }
             if (!double.TryParse(digitsAccumulator.ToString(), System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out d))
-                error(10);
-            Output.Add(registerLexem(REALS, d, digitsAccumulator.ToString(), tempLineNumWW, tempSymNumWW));
+                error(10, ": " + digitsAccumulator);
+            Output.Add(registerLexem(REALS, d, digitsAccumulator.ToString(), prevLineNum, prevSymNum));
             //TODO: что делать с многосимвольными разделителями?
             if (Tables[SEPARATORS].FindIndex(ch.ToString()) < 0 && ch != ' ')
-                error(12);
+                error(11, ": " + ch);
         }
 
         /// <summary>
@@ -375,7 +373,7 @@ namespace AnyParser
         /// <summary>
         /// Генерирует ошибку
         /// </summary>
-        private void error(int number)
+        private void error(int number, string description)
         {
             string detail = "Неизвестная ошибка";
             switch (number)
@@ -390,7 +388,7 @@ namespace AnyParser
                     detail = "Незакрытый комментарий";
                     break;
             }
-            throw new Exception(String.Format("Лексическая ошибка в строке {0}, позиция {1}: {2}", lineNum, symNum, detail));
+            throw new Exception(String.Format("Лексическая ошибка в строке {0}, позиция {1}: {2} {3}", lineNum, symNum-1, detail, description));
         }
     }
 }

@@ -15,9 +15,7 @@ namespace AnyParserDemo
         static void Main()
         {
             LexicAnalysis LA = new LexicAnalysis("prog.txt", LexicalGrammar.Read("lexic.xml"));
-            LA.Work();
             SyntaxAnalysis SA = new SyntaxAnalysis(LA, SyntaxGrammar.Read("syntax.xml"));
-            SA.Work();
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             Application.Run(new FirstForm(SA.MainNode, LA));

@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
-using System.Drawing;
-using System.Linq;
+﻿using System.Drawing;
 using System.Text;
 using System.Windows.Forms;
 using AnyParser;
@@ -32,15 +27,16 @@ namespace AnyParserDemo
             else if (sn.SyntaxNodeType == SyntaxNodeType.Failure)
             {
                 tn.ForeColor = Color.Red;
+                tn.Text = "✘" + tn.Text;
             }
+            if (sn.ErrorMsg != null)
+                tn.Text += " ERROR: " + sn.ErrorMsg;
             if (sn.EndLexem >= 0)
             {
                 StringBuilder sb = new StringBuilder();
-               
-                    sb.AppendFormat("Begins at: line {0}, column {1}; ends at line {2}, column {3}.\n",
-                        lexic.Output[sn.BeginLexem].LineNumber, lexic.Output[sn.BeginLexem].BeginColumnNumber,
-                        lexic.Output[sn.EndLexem].LineNumber, lexic.Output[sn.EndLexem].EndColumnNumber);
-                
+                sb.AppendFormat("Begins at: line {0}, column {1}; ends at line {2}, column {3}.\n",
+                    lexic.Output[sn.BeginLexem].LineNumber, lexic.Output[sn.BeginLexem].BeginColumnNumber,
+                    lexic.Output[sn.EndLexem].LineNumber, lexic.Output[sn.EndLexem].EndColumnNumber);
                 for (int i = sn.BeginLexem; i <= sn.EndLexem; i++)
                     sb.AppendFormat("{0} ", lexic.Output[i].Display);
                 tn.Tag = sb.ToString();

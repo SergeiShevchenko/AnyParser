@@ -1,7 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+﻿using System.Collections.Generic;
 
 namespace AnyParser
 {
@@ -14,6 +11,11 @@ namespace AnyParser
         /// Описание
         /// </summary>
         public string Desc { get; set; }
+
+        /// <summary>
+        /// Описание
+        /// </summary>
+        public string ErrorMsg { get; set; }
 
         /// <summary>
         /// Дочерние узлы

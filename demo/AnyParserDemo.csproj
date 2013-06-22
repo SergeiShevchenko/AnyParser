@@ -74,7 +74,7 @@
     </Compile>
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\AnyParser\AnyParser.csproj">
+    <ProjectReference Include="..\src\AnyParser.csproj">
       <Project>{519156F4-BE18-4C76-A463-AE9151FC738D}</Project>
       <Name>AnyParser</Name>
     </ProjectReference>
