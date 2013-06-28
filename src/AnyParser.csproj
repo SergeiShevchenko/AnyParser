@@ -41,6 +41,7 @@
   <ItemGroup>
     <Compile Include="Comment.cs" />
     <Compile Include="LexicalGrammar.cs" />
+    <Compile Include="SyntaxCycleItem.cs" />
     <Compile Include="SyntaxGrammar.cs" />
     <Compile Include="LexicAnalysis.cs" />
     <Compile Include="Lexem.cs" />
@@ -48,6 +49,7 @@
     <Compile Include="RuleVariant.cs" />
     <Compile Include="SyntaxAnalysis.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="SyntaxItemListExtension.cs" />
     <Compile Include="SyntaxItemType.cs" />
     <Compile Include="Rule.cs" />
     <Compile Include="SyntaxItem.cs" />

@@ -10,11 +10,7 @@
     <string>LE</string>
     <string>GT</string>
     <string>GE</string>
-    <string>plus</string>
-    <string>min</string>
     <string>or</string>
-    <string>mult</string>
-    <string>div</string>
     <string>and</string>
     <string>true</string>
     <string>false</string>
@@ -37,6 +33,10 @@
   <Separators>
     <string>~</string>
     <string>;</string>
+    <string>+</string>
+    <string>-</string>
+    <string>*</string>
+    <string>/</string>
     <string>:</string>
     <string>.</string>
     <string>,</string>

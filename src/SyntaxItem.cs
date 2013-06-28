@@ -9,7 +9,7 @@
         private string text;
 
         /// <summary>
-        /// Тип (терминал или нетерминал)
+        /// Тип (терминал, нетерминал, циклический список)
         /// </summary>
         public SyntaxItemType Type
         {
@@ -39,6 +39,16 @@
         {
             this.type = type;
             this.text = text;
+        }
+
+        public override string ToString()
+        {
+            return Text;
+        }
+
+        public virtual SyntaxItem GetFirst()
+        {
+            return this;
         }
     }
 }

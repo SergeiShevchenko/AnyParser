@@ -1,11 +1,12 @@
 namespace AnyParser
 {
     /// <summary>
-    /// Тип (терминал или нетерминал)
+    /// Тип (терминал, нетерминал, циклический список)
     /// </summary>
     public enum SyntaxItemType
     {
         Terminal = 1,
-        NonTerminal
+        NonTerminal,
+        Cycle
     }
 }

@@ -17,6 +17,9 @@ namespace AnyParser
         public const int INTEGERS = 3;
         public const int REALS = 4;
 
+        /// <summary>
+        /// Ошибка лексического анализа
+        /// </summary>
         public string ErrorMsg { get; set; }
 
         /// <summary>
@@ -66,17 +69,26 @@ namespace AnyParser
         {
             try
             {
+                // заполняем таблицы
                 Tables[WORDS].AddRange(grammar.ReservedWords);
                 Tables[SEPARATORS].AddRange(grammar.Separators);
                 postProcessList = grammar.PostProcessList;
                 commentsList = grammar.CommentsList;
+
+                // считываем исходный код
                 source = string.Join("\n", File.ReadAllLines(fileName));
                 charNum = 0;
                 lineNum = symNum = 1;
+
+                // пре-обработка (в частности, удаление комментариев)
                 PreProcess();
+
+                // запуск основного цикла
                 getChar();
                 while (ch != '\0')
-                    lexicalLoop();
+                    LexicalLoop();
+
+                // пост-обработка полученных лексем
                 PostProcess();
             }
             catch (Exception e)
@@ -85,12 +97,16 @@ namespace AnyParser
             }
         }
 
-        private void lexicalLoop()
+        /// <summary>
+        /// Цикл считывания лексем
+        /// </summary>
+        private void LexicalLoop()
         {
             while (char.IsWhiteSpace(ch))
                 getChar();
             if (char.IsLetter(ch))
             {
+                // лексема начинается с буквы - накапливаем буквы, цифры и проверяем в конце что вышло
                 StringBuilder lettersAccumulator = new StringBuilder();
                 lettersAccumulator.Append(ch);
                 int prevSymNum = symNum;
@@ -111,12 +127,13 @@ namespace AnyParser
             }
             if (ch >= '0' && ch <= '9')
             {
+                // начинается с цифры - парсим число
                 parseNumber();
                 return;
             }
-            if (char.IsWhiteSpace(ch) || ch == '\0')
+            if (ch == '\0') // конец файла
                 return;
-            //TODO: что делать с многосимвольными разделителями?
+            // нашли разделитель
             Output.Add(findLexem(SEPARATORS, ch.ToString(), 11, ": " + ch, lineNum, symNum));
             getChar();
         }

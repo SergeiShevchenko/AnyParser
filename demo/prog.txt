@@ -1,6 +1,8 @@
-﻿program var
-int n,i;
+﻿program 
+var int n,i;
+var float m,j;
 begin
 n as 1;
 i as 1.20;
+write(1+2)
 end.

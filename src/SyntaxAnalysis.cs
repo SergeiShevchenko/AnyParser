@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Linq;
+using System.Collections.Generic;
 
 namespace AnyParser
 {
@@ -18,13 +19,13 @@ namespace AnyParser
         /// Конструктор
         /// </summary>
         /// <param name="lexems">Готовый список лексем в нужном порядке</param>
-        /// <param name="_syntaxGrammar">Описание грамматики</param>
-        public SyntaxAnalysis(LexicAnalysis lexems, SyntaxGrammar _syntaxGrammar)
+        /// <param name="syntaxGrammarFileName">Файл с описанием грамматики</param>
+        public SyntaxAnalysis(LexicAnalysis lexems, string syntaxGrammarFileName)
         {
             this.lexems = lexems;
-            this._syntaxGrammar = _syntaxGrammar;
             try
             {
+                _syntaxGrammar = SyntaxGrammar.Read(syntaxGrammarFileName, lexems.Tables);
                 next();
                 MainNode.Desc = _syntaxGrammar.MainRuleName;
                 Inspect(_syntaxGrammar.MainRule, MainNode);
@@ -81,64 +82,11 @@ namespace AnyParser
                     position = ruleNode.BeginLexem + 1;
                     currentLexem = lexems.Output[ruleNode.BeginLexem];
                     // проверяем первую лексему, сравнивая ее с currentLexem:
-                    var first = variant.First();
-                    if (first.Type == SyntaxItemType.Terminal)
-                    {
-                        if (!equalsTerminal(first, currentLexem))
-                            continue;
-                    }
-                    else if (first.Text == "Number")
-                    {
-                        if (!isNumber(currentLexem))
-                            continue;
-                    }
-                    else if (first.Text == "Identifier")
-                    {
-                        if (!isIdentifier(currentLexem))
-                            continue;
-                    }
+                    if (FastMismatchCheck(variant.GetFirst()) != null)
+                        continue;
                     ruleNode.Children.Add(variantNode);
                     // первый тест пройден, запускаем полный анализ варианта, с возможной рекурсией:
-                    foreach (SyntaxItem syntaxItem in variant)
-                    {
-                        if (currentLexem == null)
-                            throw new Exception(string.Format("{0} expected but {1} found", syntaxItem.Text, "EOF"));
-                        if (syntaxItem.Type == SyntaxItemType.Terminal && !equalsTerminal(syntaxItem, currentLexem))
-                            throw new Exception(string.Format("{0} expected but {1} found", syntaxItem.Text, currentLexem.Display));
-                        if (syntaxItem.Text == "Number" && !isNumber(currentLexem))
-                            throw new Exception(string.Format("{0} expected but {1} found", syntaxItem.Text, currentLexem.Display));
-                        if (syntaxItem.Text == "Identifier" && !isIdentifier(currentLexem))
-                            throw new Exception(string.Format("{0} expected but {1} found", syntaxItem.Text, currentLexem.Display));
-                        SyntaxNode innerNode = variantNode;
-                        // только для случая, когда несколько элементов в правой части правила, создаем под них отдельные узлы:
-                        if (variant.Count > 1)
-                        {
-                            innerNode = new SyntaxNode(syntaxItem.Text);
-                            variantNode.Children.Add(innerNode);
-                        }
-                        if (syntaxItem.Type == SyntaxItemType.Terminal)
-                        {
-                            // терминал успешно распознан
-                            innerNode.BeginLexem = position - 1;
-                            innerNode.EndLexem = position - 1;
-                            next();
-                        }
-                        else if (syntaxItem.Text == "Number" || syntaxItem.Text == "Identifier")
-                        {
-                            // число или идентификатор успешно распознаны
-                            innerNode.BeginLexem = position - 1;
-                            innerNode.EndLexem = position - 1;
-                            innerNode.SyntaxNodeType = SyntaxNodeType.Success;
-                            innerNode.Children.Add(new SyntaxNode(currentLexem.Display)
-                            {
-                                BeginLexem = innerNode.BeginLexem,
-                                EndLexem = innerNode.EndLexem
-                            });
-                            next();
-                        }
-                        else // запускаем рекурсивный анализ вложенного нетерминала по его правилу
-                            Inspect(_syntaxGrammar.Find(syntaxItem.Text), innerNode);
-                    }
+                    ParseSyntaxItemsList(variant, variantNode);
                     // вариант проработал до последней лексемы, правило выполнено
                     // не рассматриваем другие варианты этого же правила
                     while (ruleNode.Children.Count > 1)
@@ -168,6 +116,84 @@ namespace AnyParser
             ruleNode.SyntaxNodeType = SyntaxNodeType.Failure;
             ruleNode.ErrorMsg = lastException.Message;
             throw lastException;
+        }
+
+        /// <summary>
+        /// Быстрая проверка на несовпадение с правилом (Checking for mistakes)
+        /// </summary>
+        private string FastMismatchCheck(SyntaxItem syntaxItem)
+        {
+            if (syntaxItem.Type == SyntaxItemType.Terminal)
+            {
+                if (!equalsTerminal(syntaxItem, currentLexem))
+                    return string.Format("{0} expected but {1} found", syntaxItem.Text, currentLexem.Display);
+            }
+            if (syntaxItem.Text == "Number")
+            {
+                if (!isNumber(currentLexem))
+                    return string.Format("{0} expected but {1} found", syntaxItem.Text, currentLexem.Display);
+            }
+            if (syntaxItem.Text == "Identifier")
+            {
+                if (!isIdentifier(currentLexem))
+                    return string.Format("{0} expected but {1} found", syntaxItem.Text, currentLexem.Display);
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Разбор списка синтаксических элементов (Parsing of the list of syntax items)
+        /// </summary>
+        private void ParseSyntaxItemsList(IList<SyntaxItem> list, SyntaxNode variantNode)
+        {
+            foreach (SyntaxItem syntaxItem in list)
+            {
+                if (currentLexem == null)
+                    throw new Exception(string.Format("{0} expected but EOF found", syntaxItem.Text));
+                if (syntaxItem.Type == SyntaxItemType.Cycle)
+                {
+                    SyntaxCycleItem cycle = (SyntaxCycleItem)syntaxItem;
+                    while (currentLexem != null)
+                    {
+                        if (FastMismatchCheck(cycle.GetFirst()) != null)
+                            break;
+                        ParseSyntaxItemsList(cycle.List, variantNode);                        
+                    }
+                    continue;
+                }
+                string mismatchDescription = FastMismatchCheck(syntaxItem);
+                if (mismatchDescription != null)
+                    throw new Exception(mismatchDescription);
+                SyntaxNode innerNode = variantNode;
+                // только для случая, когда несколько элементов в правой части правила, создаем под них отдельные узлы:
+                if (list.Count > 1)
+                {
+                    innerNode = new SyntaxNode(syntaxItem.Text);
+                    variantNode.Children.Add(innerNode);
+                }
+                if (syntaxItem.Type == SyntaxItemType.Terminal)
+                {
+                    // терминал успешно распознан
+                    innerNode.BeginLexem = position - 1;
+                    innerNode.EndLexem = position - 1;
+                    next();
+                }
+                else if (syntaxItem.Text == "Number" || syntaxItem.Text == "Identifier")
+                {
+                    // число или идентификатор успешно распознаны
+                    innerNode.BeginLexem = position - 1;
+                    innerNode.EndLexem = position - 1;
+                    innerNode.SyntaxNodeType = SyntaxNodeType.Success;
+                    innerNode.Children.Add(new SyntaxNode(currentLexem.Display)
+                    {
+                        BeginLexem = innerNode.BeginLexem,
+                        EndLexem = innerNode.EndLexem
+                    });
+                    next();
+                }
+                else // запускаем рекурсивный анализ вложенного нетерминала по его правилу
+                    Inspect(_syntaxGrammar.Find(syntaxItem.Text), innerNode);
+            }
         }
 
         /// <summary>
